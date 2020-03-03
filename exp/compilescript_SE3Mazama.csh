@@ -4,6 +4,11 @@
 #SBATCH -e mima_compile.err
 #
 #Minimal runscript for atmospheric dynamical cores
+# Compile script for MiMA... or a template for it at least. For more information, see docs, etc. on GitHub:
+# JeffersonScientific fork (may include some site-specific tweaks):
+# https://github.com/jeffersonscientific/MiMA
+# or the original, parent repo:
+# https://github.com/mjucker/MiMA
 #
 # Mazama:
 # from prefix: /opt/ohpc/pub/moduledeps/intel
