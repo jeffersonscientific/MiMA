@@ -1,12 +1,17 @@
 #!/bin/bash
 #
+#SBATCH -n 4
+#SBATCH --output=mima_test_run_%j.out
+#SBATCH --error=mima_test_run_%j.err
+#SBATCH --partition=twohour
+#
+#
 module purge
 module unuse /usr/local/modulefiles
 #
 #module load MiMA/intel19-openmpi3/1.0.0
 module load mima/
 #
-#module --ignore-cache load MiMA
 #module load intel/19.1.0.166
 #module load openmpi3
 #
