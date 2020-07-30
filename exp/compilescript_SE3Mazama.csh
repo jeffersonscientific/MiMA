@@ -14,20 +14,20 @@
 # from prefix: /opt/ohpc/pub/moduledeps/intel
 #
 # get proper compiler (intel), mpi environment:
-module purge
-module unuse /usr/local/modulefiles
-#
-#module load intel
-#module load mvapich2
-module load intel/19.1.0.166
-#
-#module load mvapich2/2.3.2
-module load openmpi3
-#
-module load netcdf/4.7.1
-module load netcdf-fortran/4.5.2
-#module load netcdf-cxx/4.3.1
-#module load pnetcdf/1.12.0
+#module purge
+#module unuse /usr/local/modulefiles
+##
+##module load intel
+##module load mvapich2
+#module load intel/19.1.0.166
+##
+##module load mvapich2/2.3.2
+#module load openmpi3
+##
+#module load netcdf/4.7.1
+#module load netcdf-fortran/4.5.2
+##module load netcdf-cxx/4.3.1
+##module load pnetcdf/1.12.0
 #
 
 #
