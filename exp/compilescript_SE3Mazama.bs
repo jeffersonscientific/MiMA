@@ -21,10 +21,15 @@ module purge
 module unuse /usr/local/modulefiles
 #
 #module load intel
-module load intel/19.1.0.166
+module load intel/19
+#module load intel/19.1.0.166
+COMP='intel19'
 #
 #module load mvapich2/2.3.2
 module load openmpi_3/
+MPI='openmpi3'
+#
+COMP_MPI=${COMP}_${MPI}
 #
 module load netcdf/4.7.1
 module load netcdf-fortran/4.5.2
@@ -35,6 +40,7 @@ module load netcdf-fortran/4.5.2
 #
 export CPATH=${INCLUDE}:${CPATH}
 CC_SPP=${CC}
+TARGET_PATH="/share/cees/software/MiMA/${COMP_MPI}"
 #
 # openmpi3:
 # pnetcdf-config --fflags; pnetcdf-config --fcflags;
@@ -123,7 +129,7 @@ cppDefs="-Duse_libMPI -Duse_netCDF -DgFortran"
 # NOTE: not sure how much of this we still need for mkmf, but this does work...
 ${mkmf} -p mima.x -t $template -c "${cppDefs}" -a $sourcedir $pathnames ${NETCDF_INC} ${NETCDF_LIB} ${NETCDF_FORTRAN_INC} ${NETCDF_FORTRAN_LIB} ${HDF5_INC} ${HDF5_LIB} ${MPI_DIR}/include ${MPI_DIR}/lib $sourcedir/shared/mpp/include $sourcedir/shared/include
 # /usr/local/include
-i#
+#
 #exit 1
 #
 
@@ -132,3 +138,15 @@ make clean
 #exit 1
 echo "*** do live compile... (`pwd`)"
 make -f Makefile -j${MIMA_NPES}
+#
+if [[ ! -d ${TARGET_PATH} ]]; then
+    mkdir -p ${TARGET_PATH}
+fi
+#
+# TODO: add copy files and/or module-write here. Note that in its early installation, MiMA used
+#  a path convention that we have abandoned. it was set up like:
+# MIMA_DIR = "/share/cees/software/MiMA/intel19/openmpi3/"
+# we'll want:
+# MIMA_DIR = "/share/cees/software/MiMA/intel19_openmpi3/"
+# then, copy just the executables, or everything?
+#cp ${execdir}/mima.x $

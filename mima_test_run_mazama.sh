@@ -20,6 +20,7 @@ module load mima/
 ##module load netcdf-cxx/4.3.1
 ##module load pnetcdf/1.12.0
 #
+module list
 # suppress an ethernet/infiniban MPI related warning/error:
 # note:
 # see:
@@ -49,13 +50,20 @@ N_PROCS=2
 #if directory does not exist, then create it...
 [ ! -d ${EXECDIR} ] && mkdir ${EXECDIR}
 #
-cp -r $MIMA_DIR/input/* ${EXECDIR}/
+cp -r ${MIMA_DIR}/input/* ${EXECDIR}/
 #cp exp/exec.${MIMA_PLATFORM}/mima.x $EXECDIR/
-cd $EXECDIR
+cd ${EXECDIR}
+echo "** * : EXEC_DIR", ${EXECDIR}
 
 [ ! -d RESTART ] && mkdir RESTART
-mpiexec -n $N_PROCS mima.x
+#mpiexec -n $N_PROCS mima.x
+mpirun -n $N_PROCS mima.x
 
+if [[ ! $? -eq 0 ]]; then
+	echo "Looks like mpiexec broke. Exiting."
+	exit 1
+fi
+#
 #CCOMB=/PATH/TO/MiMA/REPOSITORY/bin/mppnccombine.$PLATFORM
 $CCOMB -r atmos_daily.nc atmos_daily.nc.*
 $CCOMB -r atmos_avg.nc atmos_avg.nc.*
