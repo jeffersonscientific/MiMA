@@ -25,11 +25,44 @@ module load intel/19
 #module load intel/19.1.0.166
 COMP='intel19'
 #
-#module load mvapich2/2.3.2
-module load openmpi_3/
-MPI='openmpi3'
-#
-COMP_MPI=${COMP}_${MPI}
+MPI="openmpi3"
+COMP_MPI="${COMP}_${MPI}"
+case "${MPI}" in
+    "openmpi3")
+        module load openmpi_3/
+        MPI_FFLAGS="`pkg-config --cflags ompi-fort` "
+        MPI_CFLAGS="`pkg-config --cflags ompi` "
+        MPI_LDFLAGS="`pkg-config --libs ompi-fort` "
+        # NOTE: this is inclusive of `pkg-config --libs ompi`
+        ;;
+    "mpich3")
+        module load mpich_3/
+        #
+        MPI_FFLAGS="`pkg-config --cflags mpich` -I${MPI_DIR}/lib "
+        MPI_CFLAGS="`pkg-config --cflags mpich`"
+        MPI_LDFLAGS="`pkg-config --libs mpich` "
+        ;;
+    "impi19")
+        module load impi_19/
+        #
+        MPI_FFLAGS="-I${MPI_DIR}/include $-I{MPI_DIR}/lib "
+        MPI_CFLAGS="-I${MPI_DIR}/include "
+        # guessing a bit here. not sure there is a libmpi.* in
+        MPI_LDFLAGS="-L${MPI_DIR}/lib -lmpi -lmpifort"
+        ;;
+    *)
+        # not really much we can do (by default) if we don't have an MPI module
+        #  so leave these blank or we could assume it's another MPI??
+        #MPI_FFLAGS=""
+        #MPI_CFLAGS=""
+        #MPI_LDFLAGS=""
+        #
+        MPI_FFLAGS="-I${MPI_DIR}/include $-I{MPI_DIR}/lib "
+        MPI_CFLAGS="-I${MPI_DIR}/include "
+        # guessing a bit here...
+        MPI_LDFLAGS="-L${MPI_DIR}/lib -lmpi "
+        ;;
+esac
 #
 module load netcdf/4.7.1
 module load netcdf-fortran/4.5.2
@@ -40,19 +73,18 @@ module load netcdf-fortran/4.5.2
 #
 export CPATH=${INCLUDE}:${CPATH}
 CC_SPP=${CC}
-TARGET_PATH="/share/cees/software/MiMA/${COMP_MPI}"
 #
 # openmpi3:
 # pnetcdf-config --fflags; pnetcdf-config --fcflags;
 # TODO: Rememer hierarchy of nf-config and nc-config comands (aka, i think --fflags contains --cflags, so nf-conngif --fflags has all
 #  the neessary fortran and c flags. what about c++?
-export MIMA_CONFIG_FFLAGS="`nf-config --cflags` `pkg-config --cflags ompi-fort` -I${HDF5_INC} -I${HDF5_LIB} -I${NETCDF_FORTRAN_LIB} -I${NETCDF_LIB} "
+# NOTE: for mpich_3/: (maybe) use pkg-config {--cflags, --libs} mpich
+export MIMA_CONFIG_FFLAGS="`nf-config --cflags` ${MPI_FFLAGS} -I${HDF5_INC} -I${HDF5_LIB} -I${NETCDF_FORTRAN_LIB} -I${NETCDF_LIB} "
 #$ pnetcdf-config --cflags ompi; pnetcdf-config --cflags; pkg-config --cflags ompi-fort;
-export MIMA_CONFIG_CFLAGS="`nc-config --cflags` `pkg-config --cflags ompi` "
+export MIMA_CONFIG_CFLAGS="`nc-config --cflags` ${MPI_CFLAGS}"
 # x; ncxx4-config --libs; pnetcdf-config --ldflags; pnetcdf-config --libs
-export MIMA_CONFIG_LDFLAGS=" -shared-intel `nf-config --flibs` `pkg-config --libs ompi-fort` "
+export MIMA_CONFIG_LDFLAGS=" -shared-intel `nf-config --flibs`  ${MPI_LDFLAGS}"
 echo "*** ** *** ldflags: ${MIMA_CONFIG_LDFLAGS}"
-#
 # TODO: in the template, LDPATH should be getting export to MIMA_CONFIG_LDFLAGS, but it appears that it is not. It is, in fact, the very final compile step
 #
 cwd=`pwd`
@@ -70,17 +102,24 @@ fi
 
 echo "Compile on N=${MIMA_NPES} process"
 #
+VER="1.0.1"
+TARGET_PATH="/share/cees/software/MiMA/${COMP_MPI}/${VER}"
+DO_MODULE=1
+MODULE_PATH="/share/cees/modules/moduledeps/${COMP}-${MPI}/MiMA"
+# NOTE: assume executing from exp/ directory
+MIMA_ROOT_PATH=`cd ..;pwd`
 #--------------------------------------------------------------------------------------------------------
 # define variables
 platform="SE3Mazama"
 #template="`cd ../bin;pwd`/mkmf.template.$platform"    # path to template for your platform
-template="`pwd`/mkmf.template.$platform"    # path to template for your platform
-mkmf="`cd ../bin;pwd`/mkmf"                           # path to executable mkmf
-sourcedir="`cd ../src;pwd`"                           # path to directory containing model source code
-mppnccombine="`cd ../bin;pwd`/mppnccombine.$platform" # path to executable mppnccombine
+template="mkmf.template.$platform"    # path to template for your platform
+mkmf="${MIMA_ROOT_PATH}/bin/mkmf"                           # path to executable mkmf
+sourcedir="${MIMA_ROOT_PATH}/src"                           # path to directory containing model source code
+mppnccombine="${MIMA_ROOT_PATH}/bin/mppnccombine.$platform" # path to executable mppnccombine
 #--------------------------------------------------------------------------------------------------------
 execdir="${cwd}/exec.$platform"       # where code is compiled and executable is created
 workdir="${cwd}/workdir"              # where model is run and model output is produced
+#execdir="${SCRATCH}/MiMA_compile_work"
 pathnames="${cwd}/path_names"           # path to file containing list of source paths
 namelist="${cwd}/namelists"            # path to namelist file
 diagtable="${cwd}/diag_table"           # path to diagnositics table
@@ -150,3 +189,45 @@ fi
 # MIMA_DIR = "/share/cees/software/MiMA/intel19_openmpi3/"
 # then, copy just the executables, or everything?
 #cp ${execdir}/mima.x $
+#cp -r ${MIMA_ROOT_PATH}/* ${TARGET_PATH}
+for fl in bin doc_rrtm docs input postprocessing README.md src
+do
+    cp -r ${MIMA_ROOT_PATH}/$fl ${TARGET_PATH}/
+done
+cp ${execdir}/mima.x ${TARGET_PATH}/bin
+#
+#####
+#
+# write a module:
+echo "DO_MODULE: ${DO_MODULE}"
+if [[ ${DO_MODULE} -eq 1 ]]; then
+echo "Write module to: ${MODULE_PATH}/${VER}.lua"
+if [[ ! -d ${MODULE_PATH} ]]; then mkdir -p ${MODULE_PATH} ; fi
+#
+cat > ${MODULE_PATH}/${VER}.lua <<EOF
+-- -*- lua -*-
+--
+prereq("${PREREQ_COMP}")
+prereq("${MPI_MOD_STR}")
+--
+depends_on("netcdf/")
+depends_on("netcdf-fortran/")
+--
+whatis("Name: MiMA, built from ${COMP_MPI} toolchain.")
+--
+VER="${VER}"
+SW_DIR="${TARGET_PATH}"
+MIMA_PLATFORM="SE3Mazama"
+SW_BIN="${SW_DIR}/bin"
+--MIMA_EXE_PATH=pathJoin(SW_DIR, "exp", "exec."..MIMA_PLATFORM)
+--
+pushenv("MIMA_DIR", SW_DIR)
+pushenv("MIMA_DIR", SW_BIN)
+pushenv("MIMA_PLATFORM", MIMA_PLATFORM)
+pushenv("MIMA_CCOMB", pathJoin(SW_DIR, "bin", "mppnccombine."..MIMA_PLATFORM))
+pushenv("MIMA_EXE", pathJoin(MIMA_BIN, mima.x))
+--
+prepend_path("PATH", MIMA_BIN)
+EOF
+#
+fi

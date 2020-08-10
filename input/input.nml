@@ -28,7 +28,7 @@
     num_spherical           = 43,
     fourier_inc             = 1,
     triang_trunc            =.true.,
-    topography_option       = 'interpolated',
+    topography_option       = 'gaussian',
     ocean_topog_smoothing = 0.995,
     vert_coord_option       = 'uneven_sigma',
     surf_res                = 0.1,
