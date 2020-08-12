@@ -3,6 +3,9 @@
 #SBATCH -o mima_compile.out
 #SBATCH -e mima_compile.err
 #
+# TODO: let's just get rid of the mkmf.template. I think it just gets imported into the nmakefile; we're better off just setting the
+#  LDFLAGS, etc. variables from this script.
+#
 #Minimal runscript for atmospheric dynamical cores
 # Compile script for MiMA... or a template for it at least. For more information, see docs, etc. on GitHub:
 # JeffersonScientific fork (may include some site-specific tweaks):
@@ -21,14 +24,15 @@ module purge
 module unuse /usr/local/modulefiles
 #
 #module load intel
-module load intel/19
-#module load intel/19.1.0.166
-COMP='intel19'
+module load intel/19 #.1.0.166
+COMP="intel19"
 #
 MPI="openmpi3"
 COMP_MPI="${COMP}_${MPI}"
+
 case "${MPI}" in
     "openmpi3")
+        echo "executing OpenMPI"
         module load openmpi_3/
         MPI_FFLAGS="`pkg-config --cflags ompi-fort` "
         MPI_CFLAGS="`pkg-config --cflags ompi` "
@@ -36,6 +40,7 @@ case "${MPI}" in
         # NOTE: this is inclusive of `pkg-config --libs ompi`
         ;;
     "mpich3")
+        echo "executing MPICH3"
         module load mpich_3/
         #
         MPI_FFLAGS="`pkg-config --cflags mpich` -I${MPI_DIR}/lib "
@@ -43,6 +48,7 @@ case "${MPI}" in
         MPI_LDFLAGS="`pkg-config --libs mpich` "
         ;;
     "impi19")
+        echo "executing IMPI19"
         module load impi_19/
         #
         MPI_FFLAGS="-I${MPI_DIR}/include $-I{MPI_DIR}/lib "
@@ -51,6 +57,7 @@ case "${MPI}" in
         MPI_LDFLAGS="-L${MPI_DIR}/lib -lmpi -lmpifort"
         ;;
     *)
+        echo "Executing OTHER MPI"
         # not really much we can do (by default) if we don't have an MPI module
         #  so leave these blank or we could assume it's another MPI??
         #MPI_FFLAGS=""
@@ -63,31 +70,39 @@ case "${MPI}" in
         MPI_LDFLAGS="-L${MPI_DIR}/lib -lmpi "
         ;;
 esac
+echo "*** MPI_FFLAGS: ${MPI_FFLAGS}"
 #
 module load netcdf/4.7.1
 module load netcdf-fortran/4.5.2
 #module load netcdf-cxx/4.3.1
 #module load pnetcdf/1.12.0
+module load cmake/
+module load autotools/
 #
 # modules will add to an $INCLUDE variable, but we need to set that for the system...
 #
-#export CPATH=${INCLUDE}:${CPATH}
-#export CC_SPP=${CC}
-#export FC=${MPIFC}
-#export CXX=${MPICXX}
-#export CC=${MPICC}
+export CPATH=${INCLUDE}:${CPATH}
+export CPATH=${INCLUDE}:${CPATH}
+export CC_SPP=${CC}
+export FC=${MPIFC}
+export CXX=${MPICXX}
+export CC=${MPICC}
+export LD=${MPIFC}
+#
+DO_CLEAN=0
 #
 # openmpi3:
 # pnetcdf-config --fflags; pnetcdf-config --fcflags;
 # TODO: Rememer hierarchy of nf-config and nc-config comands (aka, i think --fflags contains --cflags, so nf-conngif --fflags has all
 #  the neessary fortran and c flags. what about c++?
 # NOTE: for mpich_3/: (maybe) use pkg-config {--cflags, --libs} mpich
-export MIMA_CONFIG_FFLAGS="`nf-config --cflags` ${MPI_FFLAGS} -I${HDF5_INC} -I${HDF5_LIB} -I${NETCDF_FORTRAN_LIB} -I${NETCDF_LIB} "
+export MIMA_CONFIG_FFLAGS="`nf-config --cflags` ${MPI_FFLAGS} -I${HDF5_LIB} -I${NETCDF_FORTRAN_LIB} -I${NETCDF_LIB} -I${MPI_DIR}/lib"
 #$ pnetcdf-config --cflags ompi; pnetcdf-config --cflags; pkg-config --cflags ompi-fort;
 export MIMA_CONFIG_CFLAGS="`nc-config --cflags` ${MPI_CFLAGS}"
 # x; ncxx4-config --libs; pnetcdf-config --ldflags; pnetcdf-config --libs
-export MIMA_CONFIG_LDFLAGS=" -shared-intel `nf-config --flibs`  ${MPI_LDFLAGS}"
+export MIMA_CONFIG_LDFLAGS=" `nf-config --flibs`  ${MPI_LDFLAGS}"
 echo "*** ** *** ldflags: ${MIMA_CONFIG_LDFLAGS}"
+#
 # TODO: in the template, LDPATH should be getting export to MIMA_CONFIG_LDFLAGS, but it appears that it is not. It is, in fact, the very final compile step
 #
 cwd=`pwd`
@@ -96,6 +111,28 @@ echo "MIMA_CONFIG_FFLAGS: ${MIMA_CONFIG_FFLAGS}"
 echo "MIMA_CONFIG_CFLAGS: ${MIMA_CONFIG_CFLAGS}"
 echo "MIMA_CONFIG_LDFLAGS: ${MIMA_CONFIG_LDFLAGS}"
 #
+# Let's skip the stupid mkmf.template file and just set our {}FLAGS as environment variables:
+###################
+# FFLAGS:
+DEBUG="-g -traceback -debug full"
+#OPT=-O2 -xSSE4.2 -axAVX
+OPT="-O2"
+#OPT=-O1
+#OPT=-O0
+# NOTE: I'll be frank. I don't know what half of these do... -heap-arrays is pseudo-equivalent to running under
+#  ulimit -s unlimited (infinite stack size), but at the compile level -- aka, it tells the compiler to put all arrays on the
+#  heap. This makes it run, but can be a significant performance hit. Some of the other prams are probably compier/arch. specific.
+export FFLAGS="${DEBUG} ${OPT} -heap-arrays -fpp -stack_temps -safe_cray_ptr -ftz -assume byterecl -i4 -r8 -g ${MIMA_CONFIG_FFLAGS} "
+#
+###################
+export CPPFLAGS="${MIMA_CONFIG_CFLAGS}"
+#
+###################
+export LDFLAGS="${MIMA_CONFIG_LDFLAGS}"
+#
+export CFLAGS="-D__IFC"
+
+#exit 1
 # get number of processors. If running on SLURM, get the number of tasks.
 if [[ -z ${SLURM_NTASKS} ]]; then
     MIMA_NPES=8
@@ -105,24 +142,17 @@ fi
 
 echo "Compile on N=${MIMA_NPES} process"
 #
-VER="1.0.1"
-TARGET_PATH="/share/cees/software/MiMA/${COMP_MPI}/${VER}"
-DO_MODULE=1
-MODULE_PATH="/share/cees/modules/moduledeps/${COMP}-${MPI}/MiMA"
-# NOTE: assume executing from exp/ directory
-MIMA_ROOT_PATH=`cd ..;pwd`
 #--------------------------------------------------------------------------------------------------------
 # define variables
 platform="SE3Mazama"
 #template="`cd ../bin;pwd`/mkmf.template.$platform"    # path to template for your platform
-template="mkmf.template.$platform"    # path to template for your platform
-mkmf="${MIMA_ROOT_PATH}/bin/mkmf"                           # path to executable mkmf
-sourcedir="${MIMA_ROOT_PATH}/src"                           # path to directory containing model source code
-mppnccombine="${MIMA_ROOT_PATH}/bin/mppnccombine.$platform" # path to executable mppnccombine
+template="`pwd`/mkmf.template.${platform}"    # path to template for your platform
+mkmf="`cd ../bin;pwd`/mkmf"                           # path to executable mkmf
+sourcedir="`cd ../src;pwd`"                           # path to directory containing model source code
+mppnccombine="`cd ../bin;pwd`/mppnccombine.$platform" # path to executable mppnccombine
 #--------------------------------------------------------------------------------------------------------
 execdir="${cwd}/exec.$platform"       # where code is compiled and executable is created
 workdir="${cwd}/workdir"              # where model is run and model output is produced
-#execdir="${SCRATCH}/MiMA_compile_work"
 pathnames="${cwd}/path_names"           # path to file containing list of source paths
 namelist="${cwd}/namelists"            # path to namelist file
 diagtable="${cwd}/diag_table"           # path to diagnositics table
@@ -132,7 +162,10 @@ fieldtable="${cwd}/field_table"         # path to field table (specifies tracers
 echo "**"
 echo "*** compile step..."
 # compile mppnccombine.c, will be used only if $npes > 1
-rm ${mppnccombine}
+if [[ -e ${mppnccombine} ]]; then
+    rm ${mppnccombine}
+fi
+#
 if [[ ! -f "${mppnccombine}" ]]; then
   #icc -O -o $mppnccombine -I$NETCDF_INC -L$NETCDF_LIB ${cwd}/../postprocessing/mppnccombine.c -lnetcdf
   # NOTE: this can be problematic if the SPP and MPI CC compilers get mixed up. this program often requires the spp compiler.
@@ -147,7 +180,9 @@ echo "*** set up directory structure..."
 #  documentation.
 # setup directory structure
 # yoder: just brute force these. If the files/directories, exist, nuke them...
-if [[ -d ${execdir} ]]; then rm -rf ${execdir}; fi
+if [[ $"DO_CLEAN" -eq 1 ]]; then
+    if [[ -d ${execdir} ]]; then rm -rf ${execdir}; fi
+fi
 if [[ ! -d "${execdir}" ]]; then mkdir ${execdir}; fi
 #
 if [[ -e "${workdir}" ]]; then
@@ -167,6 +202,7 @@ cd ${execdir}
 
 #export cppDefs="-Duse_libMPI -Duse_netCDF"
 cppDefs="-Duse_libMPI -Duse_netCDF -DgFortran"
+export CPPDEFS=${cppDefs}
 #
 # NOTE: not sure how much of this we still need for mkmf, but this does work...
 ${mkmf} -p mima.x -t $template -c "${cppDefs}" -a $sourcedir $pathnames ${NETCDF_INC} ${NETCDF_LIB} ${NETCDF_FORTRAN_INC} ${NETCDF_FORTRAN_LIB} ${HDF5_INC} ${HDF5_LIB} ${MPI_DIR}/include ${MPI_DIR}/lib $sourcedir/shared/mpp/include $sourcedir/shared/include
@@ -174,65 +210,55 @@ ${mkmf} -p mima.x -t $template -c "${cppDefs}" -a $sourcedir $pathnames ${NETCDF
 #
 #exit 1
 #
-
-make clean
+if [[ $"DO_CLEAN" -eq 1 ]]; then
+    make clean
+fi
 #
 #exit 1
 echo "*** do live compile... (`pwd`)"
-echo "*** FC: ${FC}"
-exit 1
+#exit 1
 make -f Makefile -j${MIMA_NPES}
 #
-if [[ ! -d ${TARGET_PATH} ]]; then
-    mkdir -p ${TARGET_PATH}
+if [[ ! $? -eq 0 ]]; then
+    # I think mnake generates a kinda stupid, not-really error that generates a not-zero, so let's not exit.
+    echo "Make error-ish..."
+    #exit 1
 fi
 #
-# TODO: add copy files and/or module-write here. Note that in its early installation, MiMA used
-#  a path convention that we have abandoned. it was set up like:
-# MIMA_DIR = "/share/cees/software/MiMA/intel19/openmpi3/"
-# we'll want:
-# MIMA_DIR = "/share/cees/software/MiMA/intel19_openmpi3/"
-# then, copy just the executables, or everything?
-#cp ${execdir}/mima.x $
-#cp -r ${MIMA_ROOT_PATH}/* ${TARGET_PATH}
-for fl in bin doc_rrtm docs input postprocessing README.md src
-do
-    cp -r ${MIMA_ROOT_PATH}/$fl ${TARGET_PATH}/
-done
-cp ${execdir}/mima.x ${TARGET_PATH}/bin
+###################################################################################
+# TEST RUN 
+echo "STARTING TEST RUN"
+#user=zespinos
+run=mima_test_yoder_zesp
 #
-#####
+MIMA_SRC=`pwd/..`
+executable=${MIMA_SRC}/exp/exec.SE3Mazama/mima.x
+input=${MIMA_SRC}/input
 #
-# write a module:
-echo "DO_MODULE: ${DO_MODULE}"
-if [[ ${DO_MODULE} -eq 1 ]]; then
-echo "Write module to: ${MODULE_PATH}/${VER}.lua"
-if [[ ! -d ${MODULE_PATH} ]]; then mkdir -p ${MODULE_PATH} ; fi
-#
-cat > ${MODULE_PATH}/${VER}.lua <<EOF
--- -*- lua -*-
---
-prereq("${PREREQ_COMP}")
-prereq("${MPI_MOD_STR}")
---
-depends_on("netcdf/")
-depends_on("netcdf-fortran/")
---
-whatis("Name: MiMA, built from ${COMP_MPI} toolchain.")
---
-VER="${VER}"
-SW_DIR="${TARGET_PATH}"
-MIMA_PLATFORM="SE3Mazama"
-SW_BIN="${SW_DIR}/bin"
---MIMA_EXE_PATH=pathJoin(SW_DIR, "exp", "exec."..MIMA_PLATFORM)
---
-pushenv("MIMA_DIR", SW_DIR)
-pushenv("MIMA_DIR", SW_BIN)
-pushenv("MIMA_PLATFORM", MIMA_PLATFORM)
-pushenv("MIMA_CCOMB", pathJoin(SW_DIR, "bin", "mppnccombine."..MIMA_PLATFORM))
-pushenv("MIMA_EXE", pathJoin(MIMA_BIN, mima.x))
---
-prepend_path("PATH", MIMA_BIN)
-EOF
-#
+rundir=/scratch/${USER}/MIMA_tmp/$run
+if [[ -z ${SLURM_NTASKS} ]]; then
+    N_PROCS=4
+else
+    N_PROCS=${SLURM_NTASKS}
 fi
+
+# Make run dir
+[ ! -d $rundir  ] && mkdir -p $rundir
+# Copy executable to rundir
+cp $executable $rundir/
+# Copy input to rundir
+cp -r $input/* $rundir
+# Run the model
+cd $rundir
+
+ulimit -s unlimited
+#mpiexec -v -n $N_PROCS ./mima.x
+mpirun -np ${N_PROCS} ./mima.x
+
+CCOMB=/scratch/${user}/models/code/MiMA_yode/bin/mppnccombine.SE3Mazama
+$CCOMB -r atmos_daily.nc atmos_daily.nc.*
+$CCOMB -r atmos_avg.nc atmos_avg.nc.*
+
+
+
+

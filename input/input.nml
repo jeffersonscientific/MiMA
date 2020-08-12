@@ -41,7 +41,7 @@
  &spectral_init_cond_nml
     initial_temperature = 264. /
 
----------- physics namelists --------------
+#---------- physics namelists --------------
 
  &rrtm_radiation_nml
      h2o_lower_limit        = 2.e-07,
@@ -208,7 +208,7 @@
 &fms_nml
     domains_stack_size = 600000 /
 
- &fms_io_nml
+&fms_io_nml
     threading_write = 'single',
     fileset_write = 'single' /
 
